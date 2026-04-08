@@ -17,7 +17,7 @@ Edge AI-based local safety monitoring system built with Python, Flask, OpenCV, a
 
 - Python + Flask
 - OpenCV + MediaPipe
-- SQLite
+- SQL
 - Folium
 - SMTP (Gmail)
 
@@ -58,7 +58,7 @@ python app.py
 
 - `app.py` - Flask routes, video streaming, APIs, and Folium map endpoint
 - `detection.py` - Edge AI threat detection and cooldown
-- `database.py` - SQLite schema and alert CRUD helpers
+- `database.py` - SQL schema and alert CRUD helpers
 - `alert.py` - SMTP email sending
 - `templates/index.html` - single dashboard page
 - 'static/style.css' and 'static/script.js'
