@@ -1,0 +1,7 @@
+Flask
+opencv-python
+mediapipe
+numpy<2
+folium
+python-dotenv
+protobuf<5
