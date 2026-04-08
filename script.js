@@ -1,61 +1,19 @@
-/* ═══════════════════════════════════════════════════════════════
-   EDGE-AI SAFETY SYSTEM — script.js
-   Backend-integrated frontend logic.
-
-   BACKEND API MAP (Flask app.py):
-   ─────────────────────────────────────────────────────────────
-   GET  /api/status          → detector status, risk, camera state
-   GET  /api/alerts          → alert list from SQLite alerts.db
-   GET  /api/map             → Folium HTML map with GPS markers
-   POST /api/monitor/start   → detector.set_monitoring(True)
-   POST /api/monitor/stop    → detector.set_monitoring(False)
-   POST /api/location        → push browser GPS to backend
-   POST /api/test_email      → fire test alert + email + DB record
-
-   CAMERA STREAM:
-   GET  /video_feed          → MJPEG multipart stream from cv2
-   (consumed by <img src="/video_feed"> — no JS required)
-
-   POLLING:
-   pollStatus() runs every 3 seconds → updates all live UI values
-   loadAlerts() runs every 15 seconds → refreshes alert list
-═══════════════════════════════════════════════════════════════ */
 'use strict';
 
-/* ─── STATE ─── */
-let systemState   = 'stopped';   // 'running' | 'paused' | 'stopped'
+let systemState   = 'stopped';   
 let threatActive  = false;
 let sidebarOpen   = true;
 let uptimeStart   = null;
 let uptimeTick    = null;
 let alertFilter   = 'all';
-let alertsData    = [];           // populated from GET /api/alerts
-let membersData   = [];           // local (no backend endpoint yet)
-let contactsData  = [];           // local (no backend endpoint yet)
+let alertsData    = [];           
+let membersData   = [];          
+let contactsData  = [];           
 let statusPollInterval  = null;
 let alertPollInterval   = null;
 let prevRiskScore = 0;
-let camerasData   = [];           // user-added cameras (local)
+let camerasData   = [];         
 let modalCamType  = 'ip';
-
-/* ═══════════════════════════════════════════════════════════════
-   AUTH — localStorage credential store
-   ─────────────────────────────────────────────────────────────
-   Signup  → saves { username, password, fullName } to localStorage
-   Login   → checks localStorage for matching credentials
-   Session → sessionStorage so refresh keeps you logged in
-
-   TO MOVE TO BACKEND:
-   Replace the localStorage check in doLogin() with:
-     const res = await fetch('/api/auth/login', {
-       method:'POST', headers:{'Content-Type':'application/json'},
-       body: JSON.stringify({ username, password })
-     });
-     const { token, user } = await res.json();
-     sessionStorage.setItem('edgeai_token', token);
-     launchApp(user);
-   And add a Flask route: POST /api/auth/login → JWT response
-═══════════════════════════════════════════════════════════════ */
 
 function getUsers()       { return JSON.parse(localStorage.getItem('edgeai_users') || '[]'); }
 function saveUsers(u)     { localStorage.setItem('edgeai_users', JSON.stringify(u)); }
@@ -160,15 +118,11 @@ function doLogout() {
   }, 300);
 }
 
-/* Auto-restore session on page load */
 window.addEventListener('DOMContentLoaded', () => {
   const session = getSession();
   if (session) launchApp(session);
 });
 
-/* ═══════════════════════════════════════════════════════════════
-   INIT
-═══════════════════════════════════════════════════════════════ */
 function initApp() {
   renderMembers();
   renderContacts();
@@ -178,38 +132,13 @@ function initApp() {
   startTimestampTick('d');
   pushBrowserLocation();
 
-  /* ── BACKEND POLLING ──────────────────────────────────────
-     pollStatus() → GET /api/status every 3 seconds
-     loadAlerts() → GET /api/alerts every 15 seconds
-  ─────────────────────────────────────────────────────── */
+ 
   pollStatus();
   loadAlerts();
   statusPollInterval = setInterval(pollStatus,  3000);
   alertPollInterval  = setInterval(loadAlerts, 15000);
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   GET /api/status — MAIN POLL LOOP
-   ─────────────────────────────────────────────────────────────
-   Response shape from detection.py → get_status():
-   {
-     monitoring: bool,
-     model: str,
-     model_loaded: bool,
-     risk_score: float (0.0–1.0),
-     threshold: float,
-     cooldown_seconds: int,
-     cooldown_remaining: int,
-     last_message: str,
-     total_alerts: int,
-     camera_status: "active" | "disconnected",
-     threat_confidence: float,
-     db_status: "connected" | "disconnected",
-     location_status: "live" | "fallback",
-     location_latitude: float (optional),
-     location_longitude: float (optional)
-   }
-═══════════════════════════════════════════════════════════════ */
 async function pollStatus() {
   try {
     const res  = await fetch('/api/status');
@@ -217,20 +146,18 @@ async function pollStatus() {
     const data = await res.json();
     applyStatus(data);
   } catch (err) {
-    /* Flask not reachable */
     setSystemStatus('danger', 'BACKEND OFFLINE', 'danger');
     updateStatusPanel(null);
   }
 }
 
 function applyStatus(data) {
-  const risk      = data.risk_score || 0;          // 0.0–1.0
+  const risk      = data.risk_score || 0;         
   const riskPct   = Math.round(risk * 100);
   const isMonitor = data.monitoring;
   const camActive = data.camera_status === 'active';
   const isThreat  = isMonitor && risk >= (data.threshold || 0.5);
 
-  /* ── STATUS BAR ── */
   if (isThreat) {
     setSystemStatus('danger', `⚠ THREAT — Risk ${riskPct}%`, 'danger');
   } else if (isMonitor) {
@@ -239,12 +166,11 @@ function applyStatus(data) {
     setSystemStatus('warn', 'MONITORING STOPPED', 'warning');
   }
 
-  /* ── CONTROL BAR INFO ── */
+ 
   setText('ci-model',    data.model || '—');
   setText('ci-camera',   camActive ? 'Active' : 'Offline');
   setText('alerts-today', data.total_alerts ?? 0);
 
-  /* ── RISK SCORE CARD ── */
   const riskLabel = riskPct >= 70 ? 'HIGH' : riskPct >= 40 ? 'MEDIUM' : 'LOW';
   const riskColor = riskPct >= 70 ? 'var(--danger)' : riskPct >= 40 ? 'var(--warning)' : 'var(--safe)';
   setText('mc-risk-level', riskLabel);
@@ -253,14 +179,13 @@ function applyStatus(data) {
   const bar = document.getElementById('mc-risk-bar');
   if (bar) { bar.style.width = riskPct + '%'; bar.style.background = riskColor; }
 
-  /* ── AI ENGINE CARD ── */
+ 
   const confPct = Math.round((data.threat_confidence || 0) * 100);
   setText('mc-ai-conf', confPct + '%');
   setText('mc-threat-conf', confPct + '%');
   const confBar = document.getElementById('mc-conf-bar');
   if (confBar) confBar.style.width = confPct + '%';
 
-  /* ── CAMERA OVERLAYS in dashboard + cameras page ── */
   ['d-rec','cp-rec'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = isMonitor ? 'flex' : 'none';
@@ -268,7 +193,6 @@ function applyStatus(data) {
   const nc = document.getElementById('d-nc');
   if (nc) nc.style.display = camActive ? 'none' : 'flex';
 
-  /* ── CAMERA START/STOP BUTTONS ── */
   ['d-start','cp-start'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = isMonitor ? 'none' : 'inline-flex';
@@ -278,21 +202,16 @@ function applyStatus(data) {
     if (el) el.style.display = isMonitor ? 'inline-flex' : 'none';
   });
 
-  /* ── FOOTER TEXT ── */
   setText('d-footer', camActive
     ? (isMonitor ? 'Live · Monitoring Active · AI Processing' : 'Live · Monitoring Stopped')
     : 'Camera offline — check connection');
-
-  /* ── STREAM LIVE OVERLAY ── */
   const dOv = document.getElementById('d-ov');
   if (dOv) dOv.style.display = camActive ? 'grid' : 'none';
   const dPh = document.getElementById('d-ph');
   if (dPh) dPh.style.display = camActive ? 'none' : 'flex';
 
-  /* ── SETTINGS BACKEND PANEL ── */
   updateStatusPanel(data);
 
-  /* ── AUTO-TRIGGER THREAT POPUP ── */
   if (isThreat && !threatActive && risk > prevRiskScore) {
     const now = new Date();
     showThreatPopup({
@@ -304,12 +223,11 @@ function applyStatus(data) {
       name:   data.last_message || 'Distress Gesture Detected',
       detail: `Threat confidence: ${confPct}%`,
     });
-    /* Fetch latest alert for GPS coords and email status */
+
     fetchLatestAlertForPopup();
   }
   prevRiskScore = risk;
 
-  /* ── CONTROL BAR BUTTON HIGHLIGHT ── */
   if (isMonitor) highlightBtn('btn-start');
   else           highlightBtn('btn-pause');
 
@@ -339,21 +257,12 @@ function setBeStatus(id, text, color) {
   if (el) { el.textContent = text; el.style.color = color; }
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   GET /api/alerts — load and render alert list
-   ─────────────────────────────────────────────────────────────
-   Response: array of {
-     id, message, latitude, longitude, created_at,
-     email_sent (0|1), email_error
-   }
-═══════════════════════════════════════════════════════════════ */
 async function loadAlerts() {
   try {
     const res  = await fetch('/api/alerts?limit=50&hours=24');
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
 
-    /* Normalise backend alert shape to frontend shape */
     alertsData = data.map(a => ({
       id:      a.id,
       time:    a.created_at ? a.created_at.split(' ')[1] || a.created_at : '—',
@@ -367,23 +276,13 @@ async function loadAlerts() {
       raw:     a,
     }));
 
-    /* Update badge */
     const badge = document.getElementById('alert-badge');
     if (badge) badge.textContent = alertsData.length;
 
-    /* Update notifications count */
     setText('notif-count', alertsData.length);
-
-    /* Render alerts page */
     renderAlertsPage();
-
-    /* Update notification panel */
     renderNotifPanel();
-
-    /* Update snapshot panel timestamps */
     updateSnapshotTimes();
-
-    /* Update mini alerts list on dashboard */
     renderMiniAlerts();
 
   } catch (err) {
@@ -448,10 +347,6 @@ function renderNotifPanel() {
   });
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   POST /api/monitor/start — enable AI threat detection
-   POST /api/monitor/stop  — pause AI threat detection
-═══════════════════════════════════════════════════════════════ */
 async function sysStart() {
   try {
     /* ── BACKEND CALL: POST /api/monitor/start ── */
@@ -459,7 +354,6 @@ async function sysStart() {
     if (!res.ok) throw new Error('HTTP ' + res.status);
     systemState = 'running';
     highlightBtn('btn-start');
-    /* pollStatus() will update the UI on next tick */
     await pollStatus();
   } catch (err) {
     console.error('sysStart failed:', err.message);
@@ -469,7 +363,6 @@ async function sysStart() {
 
 async function sysPause() {
   try {
-    /* ── BACKEND CALL: POST /api/monitor/stop ── */
     const res = await fetch('/api/monitor/stop', { method: 'POST' });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     systemState = 'paused';
@@ -481,16 +374,11 @@ async function sysPause() {
 }
 
 async function sysStop() {
-  /* Same as pause for this backend — /api/monitor/stop halts detection */
   await sysPause();
   highlightBtn('btn-stop');
   systemState = 'stopped';
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   POST /api/test_email — fire test alert
-   Records alert in SQLite + sends email via SMTP
-═══════════════════════════════════════════════════════════════ */
 async function testAlert() {
   try {
     const res  = await fetch('/api/test_email', {
@@ -510,7 +398,6 @@ async function testAlert() {
       detail: `Alert ID: ${data.alert_id || '—'}`,
     });
 
-    /* Show email status */
     const emailEl = document.getElementById('td-email-status');
     if (emailEl) {
       emailEl.innerHTML = data.ok
@@ -518,25 +405,18 @@ async function testAlert() {
         : `<i class="fa-solid fa-circle-xmark" style="color:var(--danger)"></i> Failed (check .env SMTP)`;
     }
 
-    /* Update GPS coords in popup */
     if (data.alert_id) fetchLatestAlertForPopup();
 
-    /* Refresh alert list */
     setTimeout(loadAlerts, 1500);
   } catch (err) {
     alert('Test alert failed: ' + err.message + '\nMake sure Flask is running.');
   }
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   POST /api/location — push browser GPS to backend
-   Backend uses this for accurate GPS tagging of alerts
-═══════════════════════════════════════════════════════════════ */
 function pushBrowserLocation() {
   if (!navigator.geolocation) return;
   navigator.geolocation.getCurrentPosition(
     pos => {
-      /* ── BACKEND CALL: POST /api/location ── */
       fetch('/api/location', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -546,22 +426,19 @@ function pushBrowserLocation() {
         }),
       }).catch(() => {});
     },
-    () => { /* permission denied — backend uses Punjab fallback */ },
+    () => {},
     { enableHighAccuracy: true, timeout: 10000 }
   );
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   STREAM HANDLERS — <img src="/video_feed">
-═══════════════════════════════════════════════════════════════ */
 function handleStreamLoad() {
-  /* Stream loaded successfully */
+
   const ph = document.getElementById('d-ph');
   if (ph) ph.style.display = 'none';
 }
 
 function handleStreamError() {
-  /* Flask not running or /video_feed not reachable */
+
   const img = document.getElementById('backend-stream');
   if (img) img.style.display = 'none';
   const ph = document.getElementById('d-ph');
@@ -571,21 +448,18 @@ function handleStreamError() {
 }
 
 function retryStream() {
-  /* Retry the MJPEG stream by resetting the img src */
+
   const img = document.getElementById('backend-stream');
   if (img) {
     img.style.display = 'block';
-    img.src = '/video_feed?t=' + Date.now(); /* cache bust */
+    img.src = '/video_feed?t=' + Date.now(); 
   }
   const ph = document.getElementById('d-ph');
   if (ph) ph.style.display = 'none';
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   THREAT POPUP
-═══════════════════════════════════════════════════════════════ */
 function showThreatPopup(info) {
-  if (threatActive) return; /* don't stack popups */
+  if (threatActive) return; 
   threatActive = true;
   setText('td-loc',    info.loc);
   setText('td-cam',    info.cam);
@@ -651,9 +525,6 @@ function closeKeep() {
   threatActive = false;
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   ALERTS PAGE RENDER
-═══════════════════════════════════════════════════════════════ */
 function renderAlertsPage() {
   const list = document.getElementById('alerts-full-list');
   if (!list) return;
@@ -713,9 +584,6 @@ function filterAlerts(f, btn) {
   renderAlertsPage();
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   NAVIGATION
-═══════════════════════════════════════════════════════════════ */
 function goPage(page, el) {
   event.preventDefault();
   document.querySelectorAll('.sb-link').forEach(l => l.classList.remove('active'));
@@ -734,10 +602,6 @@ function goPage(page, el) {
     if (iframe) iframe.src = '/api/map?t=' + Date.now();
   }
 }
-
-/* ═══════════════════════════════════════════════════════════════
-   SIDEBAR
-═══════════════════════════════════════════════════════════════ */
 function toggleSidebar() {
   const sb = document.getElementById('sidebar');
   const mw = document.getElementById('main-wrap');
@@ -750,9 +614,6 @@ function toggleSidebar() {
   }
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   NOTIFICATIONS
-═══════════════════════════════════════════════════════════════ */
 function toggleNotif() {
   document.getElementById('notif-panel').classList.toggle('open');
 }
@@ -763,9 +624,6 @@ document.addEventListener('click', e => {
     np.classList.remove('open');
 });
 
-/* ═══════════════════════════════════════════════════════════════
-   CLOCKS
-═══════════════════════════════════════════════════════════════ */
 function startUptimeClock() {
   uptimeStart = Date.now();
   clearInterval(uptimeTick);
@@ -799,9 +657,6 @@ function startTimestampTick(prefix) {
   setInterval(tick, 1000);
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   SYSTEM STATUS HELPER
-═══════════════════════════════════════════════════════════════ */
 function setSystemStatus(ledClass, valText, textClass) {
   const colorMap = { safe:'var(--safe)', warning:'var(--warning)', danger:'var(--danger)' };
   const color = colorMap[textClass] || 'var(--t2)';
@@ -837,7 +692,6 @@ function setSystemStatus(ledClass, valText, textClass) {
   }
   setText('sb-status-text', ledClass === 'safe' ? 'SYSTEM SAFE' : ledClass === 'warn' ? 'PAUSED' : 'THREAT ACTIVE');
 
-  /* Topbar indicator */
   const tiDot = document.getElementById('ti-dot');
   if (tiDot) {
     tiDot.className = 'ti-dot';
@@ -853,9 +707,7 @@ function highlightBtn(id) {
   });
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   CAMERAS PAGE — additional cameras (UI only, no backend endpoint)
-═══════════════════════════════════════════════════════════════ */
+
 function buildCamerasPage() {
   renderCamerasList();
 }
@@ -940,9 +792,6 @@ function removeCamera(id) {
   renderCamerasList();
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   MEMBERS (local state — no backend endpoint yet)
-═══════════════════════════════════════════════════════════════ */
 function renderMembers() {
   const grid = document.getElementById('member-cards');
   if (!grid) return;
@@ -1001,9 +850,6 @@ function registerMember() {
   flashBtn('.btn-register','<i class="fa-solid fa-check"></i> Member Added!');
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   CONTACTS (local state)
-═══════════════════════════════════════════════════════════════ */
 function renderContacts() {
   const list = document.getElementById('contacts-list');
   if (!list) return;
@@ -1049,9 +895,6 @@ function deleteContact(id) {
   renderContacts();
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   HELPERS
-═══════════════════════════════════════════════════════════════ */
 function setText(id, val) {
   const el = document.getElementById(id);
   if (el) el.textContent = val;
@@ -1083,7 +926,6 @@ function flashBtn(selector, html) {
   setTimeout(() => { el.innerHTML = orig; el.style.background = ''; }, 1800);
 }
 
-/* ── Inject keyframes ── */
 const _ks = document.createElement('style');
 _ks.textContent = `
 @keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-8px)}40%{transform:translateX(8px)}60%{transform:translateX(-5px)}80%{transform:translateX(5px)}}
@@ -1091,7 +933,6 @@ _ks.textContent = `
 `;
 document.head.appendChild(_ks);
 
-/* ── Keyboard shortcuts ── */
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     document.getElementById('threat-overlay')?.classList.remove('open');
