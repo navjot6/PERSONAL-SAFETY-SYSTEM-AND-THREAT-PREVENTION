@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>EdgeAI Safety System</title>
+  <!--
+    ╔══════════════════════════════════════════════════════╗
+    ║  FLASK FILE PLACEMENT:                               ║
+    ║    templates/index.html  ← this file                ║
+    ║    static/style.css      ← unchanged                 ║
+    ║    static/script.js      ← updated below             ║
+    ║  Route: @app.route("/") → render_template("index.html")║
+    ╚══════════════════════════════════════════════════════╝
+  -->
+  <link rel="stylesheet" href="/static/style.css"/>
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&family=Exo+2:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════════
+     AUTH SCREEN
+     Frontend-only localStorage auth.
+     To add real backend auth: POST /api/auth/login in doLogin()
+══════════════════════════════════════════════════════ -->
+<div id="auth-screen">
+  <div class="auth-bg">
+    <div class="hex-grid"></div>
+    <div class="scan-line"></div>
+    <div class="corner tl"></div><div class="corner tr"></div>
+    <div class="corner bl"></div><div class="corner br"></div>
+  </div>
+  <div class="auth-panel">
+    <div class="auth-logo">
+      <div class="logo-icon"><i class="fa-solid fa-shield-halved"></i></div>
+      <div class="logo-text">
+        <span class="logo-main">EDGE<span class="lo-accent">AI</span></span>
+        <span class="logo-sub">SAFETY SYSTEM v2.4</span>
+      </div>
+    </div>
+    <div id="frm-login" class="auth-form active">
+      <h2>SECURE ACCESS</h2>
+      <p class="auth-desc">Authenticate to enter control center</p>
+      <div class="field-wrap">
+        <i class="fa-solid fa-user field-ico"></i>
+        <input type="text" class="auth-input" placeholder="Operator ID" id="l-username"/>
+        <div class="field-line"></div>
+      </div>
+      <div class="field-wrap">
+        <i class="fa-solid fa-lock field-ico"></i>
+        <input type="password" class="auth-input" placeholder="Password" id="l-password"/>
+        <div class="field-line"></div>
+      </div>
+      <div class="auth-error" id="login-error" style="display:none">
+        <i class="fa-solid fa-circle-exclamation"></i>
+        <span id="login-error-msg">Invalid credentials</span>
+      </div>
+      <button class="auth-btn" onclick="doLogin()"><span>AUTHENTICATE</span><i class="fa-solid fa-arrow-right"></i></button>
+      <p class="auth-switch">New operator? <a href="#" onclick="showForm('frm-signup')">Request Access</a></p>
+    </div>
+    <div id="frm-signup" class="auth-form">
+      <h2>REQUEST ACCESS</h2>
+      <p class="auth-desc">Create your operator credentials</p>
+      <div class="field-wrap"><i class="fa-solid fa-id-badge field-ico"></i><input type="text" class="auth-input" placeholder="Full Name" id="s-fullname"/><div class="field-line"></div></div>
+      <div class="field-wrap"><i class="fa-solid fa-user field-ico"></i><input type="text" class="auth-input" placeholder="Choose Operator ID" id="s-username"/><div class="field-line"></div></div>
+      <div class="field-wrap"><i class="fa-solid fa-lock field-ico"></i><input type="password" class="auth-input" placeholder="Set Password" id="s-password"/><div class="field-line"></div></div>
+      <div class="field-wrap"><i class="fa-solid fa-lock field-ico"></i><input type="password" class="auth-input" placeholder="Confirm Password" id="s-confirm"/><div class="field-line"></div></div>
+      <div class="auth-error" id="signup-error" style="display:none"><i class="fa-solid fa-circle-exclamation"></i><span id="signup-error-msg">Error</span></div>
+      <div class="auth-success" id="signup-success" style="display:none"><i class="fa-solid fa-circle-check"></i> Account created! You can now sign in.</div>
+      <button class="auth-btn" onclick="doSignup()"><span>CREATE ACCOUNT</span><i class="fa-solid fa-arrow-right"></i></button>
+      <p class="auth-switch">Have credentials? <a href="#" onclick="showForm('frm-login')">Sign In</a></p>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     MAIN APP
+══════════════════════════════════════════════════════ -->
+<div id="app" style="display:none">
+
+  <nav id="sidebar">
+    <div class="sb-brand">
+      <div class="logo-icon sm"><i class="fa-solid fa-shield-halved"></i></div>
+      <div class="sb-brand-txt">
+        <span class="logo-main sm">EDGE<span class="lo-accent">AI</span></span>
+        <span class="logo-sub">CONTROL</span>
+      </div>
+    </div>
+    <!-- Status dot: updated by pollStatus() from GET /api/status -->
+    <div class="sb-status-mini">
+      <span class="sb-dot safe-dot" id="sb-dot"></span>
+      <span id="sb-status-text">CONNECTING...</span>
+    </div>
+    <ul class="sb-nav">
+      <li><a class="sb-link active" href="#" onclick="goPage('dashboard',this)"><i class="fa-solid fa-gauge-high"></i><span>Dashboard</span></a></li>
+      <li><a class="sb-link" href="#" onclick="goPage('cameras',this)"><i class="fa-solid fa-video"></i><span>Cameras</span></a></li>
+      <li><a class="sb-link" href="#" onclick="goPage('alerts',this)"><i class="fa-solid fa-triangle-exclamation"></i><span>Alerts</span><span class="sb-badge danger-badge" id="alert-badge">0</span></a></li>
+      <li><a class="sb-link" href="#" onclick="goPage('members',this)"><i class="fa-solid fa-users"></i><span>Members</span></a></li>
+      <li><a class="sb-link" href="#" onclick="goPage('contacts',this)"><i class="fa-solid fa-phone"></i><span>Contacts</span></a></li>
+      <li><a class="sb-link" href="#" onclick="goPage('settings',this)"><i class="fa-solid fa-sliders"></i><span>Settings</span></a></li>
+    </ul>
+    <div class="sb-footer">
+      <div class="sb-user">
+        <div class="sb-av" id="sb-av-initials">AD</div>
+        <div class="sb-user-info"><span id="sb-username-display">Operator</span><span class="sb-role">Edge AI System</span></div>
+      </div>
+      <button class="sb-logout" onclick="doLogout()"><i class="fa-solid fa-power-off"></i></button>
+    </div>
+  </nav>
+
+  <div class="main-wrap" id="main-wrap">
+
+    <header class="topbar">
+      <button class="ham-btn" onclick="toggleSidebar()"><i class="fa-solid fa-bars"></i></button>
+      <div class="tb-breadcrumb"><span class="tb-sys">EDGE-AI /</span><span id="tb-page-name">Dashboard</span></div>
+      <div class="tb-right">
+        <!-- Real local clock, startRealtimeClock() in script.js -->
+        <div class="tb-clock" id="tb-clock">00:00:00</div>
+        <div class="tb-search"><i class="fa-solid fa-magnifying-glass"></i><input type="text" placeholder="Search logs..."/></div>
+        <!-- Indicator updated by pollStatus() — green=safe, red=threat -->
+        <div class="tb-alert-ind" id="tb-alert-ind">
+          <span class="ti-dot safe-dot" id="ti-dot"></span>
+          <span id="ti-text">SAFE</span>
+        </div>
+        <button class="tb-icon-btn" onclick="toggleNotif()">
+          <i class="fa-solid fa-bell"></i>
+          <span class="tb-badge" id="notif-count">0</span>
+        </button>
+        <div class="tb-av" id="tb-av-initials">AD</div>
+      </div>
+    </header>
+
+    <!-- ════════════════════════════════════════════════════
+         SYSTEM CONTROL BAR
+         ─────────────────────────────────────────────────
+         Start  → sysStart()  → POST /api/monitor/start
+         Pause  → sysPause()  → POST /api/monitor/stop
+         Stop   → sysStop()   → POST /api/monitor/stop
+         Status is polled every 3s from GET /api/status
+    ════════════════════════════════════════════════════ -->
+    <div class="ctrl-bar">
+      <div class="ctrl-status">
+        <div class="ctrl-led safe-led" id="ctrl-led"></div>
+        <div>
+          <span class="ctrl-label">SYSTEM STATUS</span>
+          <!-- Updated by pollStatus() → monitoring + risk_score from /api/status -->
+          <span class="ctrl-val safe-text" id="ctrl-val">CONNECTING...</span>
+        </div>
+      </div>
+      <div class="ctrl-info">
+        <div class="ci-item"><span>UPTIME</span><strong id="uptime">00:00:00</strong></div>
+        <!-- ci-model, ci-camera, alerts-today all from GET /api/status -->
+        <div class="ci-item"><span>AI MODEL</span><strong id="ci-model">—</strong></div>
+        <div class="ci-item"><span>CAMERA</span><strong id="ci-camera">—</strong></div>
+        <div class="ci-item"><span>TOTAL ALERTS</span><strong id="alerts-today">0</strong></div>
+      </div>
+      <div class="ctrl-btns">
+        <button class="cb start-btn" id="btn-start" onclick="sysStart()"><i class="fa-solid fa-play"></i>Start</button>
+        <button class="cb pause-btn" id="btn-pause" onclick="sysPause()"><i class="fa-solid fa-pause"></i>Pause</button>
+        <button class="cb stop-btn"  id="btn-stop"  onclick="sysStop()"><i class="fa-solid fa-stop"></i>Stop</button>
+        <!-- POST /api/test_email — fires a test alert email and records to DB -->
+        <button class="cb handle-btn" onclick="testAlert()"><i class="fa-solid fa-bolt"></i>Test Alert</button>
+      </div>
+    </div>
+
+    <!-- NOTIFICATION PANEL — populated from GET /api/alerts -->
+    <div class="notif-panel" id="notif-panel">
+      <div class="np-hdr"><span>RECENT ALERTS</span><button onclick="toggleNotif()"><i class="fa-solid fa-xmark"></i></button></div>
+      <div id="notif-body">
+        <div class="np-item ok-row">
+          <div class="np-ic ok-ic"><i class="fa-solid fa-circle-notch fa-spin"></i></div>
+          <div><strong>Loading...</strong><p>Fetching from /api/alerts</p></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════════ PAGES ══════════════ -->
+
+    <!-- DASHBOARD -->
+    <section class="page active" id="page-dashboard">
+      <div class="pg-hdr">
+        <span class="pg-title">OPERATIONAL DASHBOARD</span>
+        <span class="live-chip"><span class="pulse-dot"></span>LIVE</span>
+      </div>
+
+      <!-- METRIC CARDS — all values from GET /api/status (polled every 3s) -->
+      <div class="metrics-row">
+
+        <!-- ALERT STATUS — monitoring + risk_score from /api/status -->
+        <div class="metric-card big-card glass" id="mc-main">
+          <div class="mc-head"><span class="mc-lbl">ALERT STATUS</span><div class="mc-led safe-led" id="mc-led"></div></div>
+          <div class="mc-big safe-text" id="mc-status">CONNECTING</div>
+          <div class="mc-sub" id="mc-sub">Waiting for backend...</div>
+        </div>
+
+        <!-- RISK SCORE — risk_score (0.0–1.0) × 100 from /api/status -->
+        <div class="metric-card glass">
+          <div class="mc-head"><span class="mc-lbl">RISK SCORE</span><i class="fa-solid fa-chart-line mc-ico"></i></div>
+          <div class="mc-val warn-text" id="mc-risk-level">—</div>
+          <div class="mc-bar-wrap"><div class="mc-bar" id="mc-risk-bar" style="width:0%;background:var(--safe)"></div></div>
+          <div class="mc-sub">Score: <span id="mc-risk-score">0</span> / 100</div>
+        </div>
+
+        <!-- AI ENGINE — threat_confidence from /api/status -->
+        <div class="metric-card glass">
+          <div class="mc-head"><span class="mc-lbl">AI ENGINE</span><i class="fa-solid fa-microchip mc-ico"></i></div>
+          <div class="mc-val accent-t" id="mc-ai-conf">—%</div>
+          <div class="mc-bar-wrap"><div class="mc-bar accent-bar" id="mc-conf-bar" style="width:0%"></div></div>
+          <div class="mc-sub">Threat Conf: <span id="mc-threat-conf">0%</span></div>
+        </div>
+
+      </div>
+
+      <div class="dash-mid">
+
+        <!-- ════════════════════════════════════════════════
+             BACKEND CAMERA STREAM
+             ─────────────────────────────────────────────
+             HOW IT WORKS:
+             1. app.py starts a thread running _capture_loop()
+             2. _capture_loop() reads from cv2.VideoCapture(0)
+             3. Each processed frame is JPEG-encoded → latest_jpeg
+             4. /video_feed route streams latest_jpeg as MJPEG:
+                  multipart/x-mixed-replace; boundary=frame
+             5. Browser <img src="/video_feed"> reads this stream
+                natively — NO JavaScript getUserMedia needed.
+             6. Flask's detection.py annotates frames with
+                MediaPipe pose + risk overlays in real-time.
+
+             MONITORING CONTROL:
+             • POST /api/monitor/start → detector.set_monitoring(True)
+               detection.py starts processing poses + triggering alerts
+             • POST /api/monitor/stop  → detector.set_monitoring(False)
+               Camera still streams, but no detection or alerts fired
+        ════════════════════════════════════════════════ -->
+        <div class="cam-module glass">
+          <div class="cam-hdr">
+            <div class="cam-hdr-l">
+              <i class="fa-solid fa-video"></i>
+              <span id="cam-title">CAM-01 — Room 1</span>
+            </div>
+            <div class="cam-hdr-r">
+              <!-- Shown when monitoring=true from /api/status -->
+              <span class="rec-ind" id="d-rec" style="display:none">
+                <span class="rec-dot"></span>MONITORING
+              </span>
+              <!-- Shown when camera is offline -->
+              <span class="nc-ind" id="d-nc"><span></span>CONNECTING</span>
+            </div>
+          </div>
+
+          <div class="cam-view" id="d-view">
+            <!--
+              ★ BACKEND STREAM CONNECTION POINT ★
+              src="/video_feed" hits Flask's @app.route("/video_feed")
+              which calls _stream_frames() returning MJPEG multipart.
+              The browser renders this as live video natively.
+              onerror → shows placeholder if Flask is not running.
+              onload  → hides placeholder, shows live overlay.
+            -->
+            <img
+              id="backend-stream"
+              src="/video_feed"
+              alt="Backend AI Camera Stream"
+              style="width:100%;height:100%;object-fit:cover;display:block"
+              onerror="handleStreamError()"
+              onload="handleStreamLoad()"
+            />
+            <!-- Shown only if Flask server is not reachable -->
+            <div class="cam-ph" id="d-ph" style="display:none">
+              <div class="cam-grid-ov"></div>
+              <div class="cam-ph-cnt">
+                <i class="fa-solid fa-video-slash"></i>
+                <p>Backend stream unavailable</p>
+                <span>Ensure Flask is running: python app.py</span>
+                <button class="cam-start-btn" onclick="retryStream()" style="margin-top:8px">
+                  <i class="fa-solid fa-rotate-right"></i> Retry Connection
+                </button>
+              </div>
+            </div>
+            <!-- Live overlay — shown when monitoring is active -->
+            <div class="cam-live-ov" id="d-ov" style="display:none">
+              <div><span class="rec-ind sm"><span class="rec-dot"></span>LIVE</span></div>
+              <div><span class="zone-tag" id="cam-zone-tag">Room 1</span></div>
+              <div class="cam-ts" id="d-ts"></div>
+            </div>
+          </div>
+
+          <div class="cam-footer">
+            <span id="d-footer">Connecting to backend stream...</span>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span class="ai-badge"><i class="fa-solid fa-microchip"></i> AI Active</span>
+              <!--
+                START MONITORING → POST /api/monitor/start
+                Tells detection.py to start processing poses.
+                The MJPEG stream always runs; this enables alerts.
+              -->
+              <button class="cam-start-btn" id="d-start" onclick="sysStart()">
+                <i class="fa-solid fa-play"></i> Start Monitoring
+              </button>
+              <!--
+                STOP MONITORING → POST /api/monitor/stop
+                Detection pauses. Stream still visible.
+              -->
+              <button class="cam-stop-btn" id="d-stop" onclick="sysPause()" style="display:none">
+                <i class="fa-solid fa-stop"></i> Stop Monitoring
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- EVIDENCE SNAPSHOTS + RECENT ALERTS from /api/alerts -->
+        <div class="snap-panel glass">
+          <div class="snap-panel-hdr">
+            <div class="snap-hdr-left">
+              <i class="fa-solid fa-camera-retro"></i>
+              <span>EVIDENCE SNAPSHOTS</span>
+            </div>
+            <button class="text-link" onclick="loadAlerts()">
+              <i class="fa-solid fa-rotate-right"></i> Refresh
+            </button>
+          </div>
+
+          <!-- Thumbnail grid updated with latest 4 alerts from /api/alerts -->
+          <div class="snap-grid" id="snap-grid">
+            <div class="snap-thumb">
+              <div class="snap-img snap-img-1"><i class="fa-solid fa-person-running"></i></div>
+              <div class="snap-info">
+                <div class="snap-top"><span class="ev-tag high">HIGH</span><span class="snap-cam">CAM-01</span></div>
+                <div class="snap-loc" id="snap-loc-1">Loading...</div>
+                <div class="snap-time" id="snap-t1">—</div>
+              </div>
+            </div>
+            <div class="snap-thumb">
+              <div class="snap-img snap-img-2"><i class="fa-solid fa-hand-paper"></i></div>
+              <div class="snap-info">
+                <div class="snap-top"><span class="ev-tag med">MED</span><span class="snap-cam">CAM-01</span></div>
+                <div class="snap-loc" id="snap-loc-2">Loading...</div>
+                <div class="snap-time" id="snap-t2">—</div>
+              </div>
+            </div>
+            <div class="snap-thumb">
+              <div class="snap-img snap-img-3"><i class="fa-solid fa-user-secret"></i></div>
+              <div class="snap-info">
+                <div class="snap-top"><span class="ev-tag high">HIGH</span><span class="snap-cam">CAM-01</span></div>
+                <div class="snap-loc" id="snap-loc-3">Loading...</div>
+                <div class="snap-time" id="snap-t3">—</div>
+              </div>
+            </div>
+            <div class="snap-thumb">
+              <div class="snap-img snap-img-4"><i class="fa-solid fa-shield-check"></i></div>
+              <div class="snap-info">
+                <div class="snap-top"><span class="ev-tag low">LOW</span><span class="snap-cam">CAM-01</span></div>
+                <div class="snap-loc" id="snap-loc-4">Loading...</div>
+                <div class="snap-time" id="snap-t4">—</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="snap-divider"></div>
+
+          <!-- RECENT ACTIVITY — last 3 alerts from GET /api/alerts -->
+          <div class="snap-recent-hdr"><span>RECENT ACTIVITY</span></div>
+          <div id="mini-alerts-list">
+            <div class="mini-alert ok-row">
+              <span class="ma-dot ok-dot"></span>
+              <div><strong>Loading from /api/alerts...</strong><p>Please wait</p></div>
+              <span class="ma-chip chip-ok">WAIT</span>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /dash-mid -->
+    </section>
+
+    <!-- CAMERAS PAGE -->
+    <section class="page" id="page-cameras">
+      <div class="pg-hdr">
+        <span class="pg-title">CAMERA MANAGEMENT</span>
+        <button class="cb handle-btn" onclick="openAddCamModal()"><i class="fa-solid fa-plus"></i> Add Camera</button>
+      </div>
+
+      <!-- Primary backend stream shown large -->
+      <div class="cam-list-card glass" style="margin-bottom:16px">
+        <div class="cam-list-hdr">
+          <div class="cam-list-hdr-l">
+            <i class="fa-solid fa-video"></i>
+            <span>CAM-01 — Room 1 (Primary · Backend Stream)</span>
+            <span class="rec-ind" id="cp-rec" style="display:none"><span class="rec-dot"></span>MONITORING</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span class="ai-badge"><i class="fa-solid fa-microchip"></i> AI Active</span>
+          </div>
+        </div>
+        <div class="cam-view" style="aspect-ratio:16/9">
+          <!-- Same /video_feed stream, Flask handles multiple img readers -->
+          <img src="/video_feed" alt="Backend Stream"
+            style="width:100%;height:100%;object-fit:cover;display:block"
+            onerror="this.style.opacity='0.3'"/>
+        </div>
+        <div class="cam-footer">
+          <span>Backend stream · /video_feed · MediaPipe AI overlay</span>
+          <div style="display:flex;gap:8px">
+            <button class="cam-start-btn" id="cp-start" onclick="sysStart()"><i class="fa-solid fa-play"></i> Start Monitoring</button>
+            <button class="cam-stop-btn" id="cp-stop" onclick="sysPause()" style="display:none"><i class="fa-solid fa-stop"></i> Stop</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="cameras-list" id="cameras-list"></div>
+      <div class="cam-empty-hint" id="cam-empty-hint" style="display:none">
+        <i class="fa-solid fa-video-slash"></i>
+        <p>No additional cameras added</p>
+        <span>Click "Add Camera" to register an IP or RTSP camera</span>
+      </div>
+    </section>
+
+    <!-- ADD CAMERA MODAL -->
+    <div class="modal-overlay" id="add-cam-modal">
+      <div class="modal-box glass">
+        <div class="modal-hdr">
+          <span><i class="fa-solid fa-video"></i> ADD NEW CAMERA</span>
+          <button onclick="closeAddCamModal()"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="field-wrap mt12">
+          <i class="fa-solid fa-tag field-ico"></i>
+          <input class="auth-input" type="text" placeholder="Camera Name (e.g. Room 2)" id="nc-name"/>
+          <div class="field-line"></div>
+        </div>
+        <div class="modal-tab-row">
+          <button class="modal-tab active" onclick="modalCamTab(this,'ip')">IP CAMERA</button>
+          <button class="modal-tab" onclick="modalCamTab(this,'cctv')">CCTV/RTSP</button>
+        </div>
+        <div id="nc-ip-row" class="cam-input-row mt12">
+          <input class="cam-input" type="text" placeholder="e.g. 192.168.1.100" id="nc-ip-val"/>
+        </div>
+        <div id="nc-rtsp-row" class="cam-input-row mt12" style="display:none">
+          <input class="cam-input" type="text" placeholder="rtsp://192.168.1.100:554/stream" id="nc-rtsp-val"/>
+        </div>
+        <p style="font-size:.75rem;color:var(--t2);margin-top:10px;padding:0 4px">
+          <i class="fa-solid fa-circle-info"></i>
+          IP/RTSP playback requires a backend proxy. The address is stored for reference.
+        </p>
+        <div class="modal-footer">
+          <button class="btn-cancel" onclick="closeAddCamModal()">Cancel</button>
+          <button class="btn-register" style="width:auto;padding:10px 24px" onclick="addCamera()">
+            <i class="fa-solid fa-plus"></i> Add Camera
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ALERTS PAGE — data from GET /api/alerts -->
+    <section class="page" id="page-alerts">
+      <div class="pg-hdr"><span class="pg-title">ALERTS & INCIDENT LOGS</span></div>
+      <div class="filter-row">
+        <button class="f-btn active" onclick="filterAlerts('all',this)">All</button>
+        <button class="f-btn" onclick="filterAlerts('critical',this)">Critical</button>
+        <button class="f-btn" onclick="filterAlerts('warning',this)">Warning</button>
+        <button class="f-btn" onclick="filterAlerts('resolved',this)">Resolved</button>
+        <button class="cb handle-btn ml-auto" onclick="loadAlerts()"><i class="fa-solid fa-rotate-right"></i> Refresh</button>
+        <!-- POST /api/test_email → records alert + sends email -->
+        <button class="cb start-btn" onclick="testAlert()"><i class="fa-solid fa-bolt"></i> Test Alert</button>
+      </div>
+
+      <!--
+        ALERT MAP — GET /api/map
+        Flask generates a Folium/Leaflet map with red markers
+        at each alert's GPS coordinates. Rendered as full HTML
+        and embedded in an iframe since Folium outputs a full page.
+      -->
+      <div class="glass" style="border-radius:12px;overflow:hidden;margin-bottom:16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border)">
+          <span style="font-family:'Rajdhani',sans-serif;font-size:.88rem;font-weight:700;letter-spacing:1px">
+            <i class="fa-solid fa-map-location-dot" style="color:var(--accent);margin-right:6px"></i>ALERT LOCATION MAP
+          </span>
+          <button class="text-link" onclick="document.getElementById('alert-map').src='/api/map?t='+Date.now()">
+            <i class="fa-solid fa-rotate-right"></i> Reload
+          </button>
+        </div>
+        <!--
+          /api/map endpoint in app.py uses Folium to render
+          a Leaflet map with all alert GPS points as red markers.
+          radius_km and hours params control what's shown.
+        -->
+        <iframe id="alert-map" src="/api/map" style="width:100%;height:280px;border:none" loading="lazy"></iframe>
+      </div>
+
+      <div id="alerts-full-list" class="alerts-full-list"></div>
+    </section>
+
+    <!-- MEMBERS PAGE -->
+    <section class="page" id="page-members">
+      <div class="pg-hdr"><span class="pg-title">REGISTERED MEMBERS</span></div>
+      <div class="members-layout">
+        <div class="member-cards-grid" id="member-cards"></div>
+        <div class="register-panel glass">
+          <div class="rp-hdr"><i class="fa-solid fa-user-plus"></i> ADD MEMBER</div>
+          <div class="photo-upload" id="photo-drop" onclick="document.getElementById('photo-input').click()">
+            <div class="pu-inner" id="pu-inner">
+              <i class="fa-solid fa-camera-retro"></i><p>Upload Face Photo</p><span>Click or drag image here</span>
+            </div>
+            <input type="file" id="photo-input" accept="image/*" style="display:none" onchange="previewPhoto(this)"/>
+          </div>
+          <div class="field-wrap mt12"><i class="fa-solid fa-user field-ico"></i><input class="auth-input" type="text" placeholder="Full Name" id="reg-name"/><div class="field-line"></div></div>
+          <select class="rp-select" id="reg-role"><option value="">Select Role</option><option>Security Guard</option><option>Operator</option><option>Supervisor</option><option>Visitor</option><option>Suspect (Flagged)</option></select>
+          <button class="btn-register" onclick="registerMember()"><i class="fa-solid fa-user-plus"></i> Add Member</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- CONTACTS PAGE -->
+    <section class="page" id="page-contacts">
+      <div class="pg-hdr"><span class="pg-title">EMERGENCY CONTACTS</span></div>
+      <div class="contacts-layout">
+        <div id="contacts-list" class="contacts-list"></div>
+        <div class="register-panel glass">
+          <div class="rp-hdr"><i class="fa-solid fa-phone-plus"></i> ADD CONTACT</div>
+          <div class="field-wrap mt12"><i class="fa-solid fa-user field-ico"></i><input class="auth-input" type="text" placeholder="Contact Name" id="c-name"/><div class="field-line"></div></div>
+          <div class="field-wrap"><i class="fa-solid fa-phone field-ico"></i><input class="auth-input" type="text" placeholder="Phone Number" id="c-phone"/><div class="field-line"></div></div>
+          <div class="field-wrap"><i class="fa-solid fa-envelope field-ico"></i><input class="auth-input" type="email" placeholder="Email Address" id="c-email"/><div class="field-line"></div></div>
+          <select class="rp-select" id="c-rel"><option value="">Relation / Role</option><option>Family</option><option>Police</option><option>Fire Dept</option><option>Medical</option><option>Management</option></select>
+          <button class="btn-register" onclick="addContact()"><i class="fa-solid fa-plus"></i> Add Contact</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- SETTINGS PAGE -->
+    <section class="page" id="page-settings">
+      <div class="pg-hdr"><span class="pg-title">SYSTEM SETTINGS</span></div>
+      <div class="settings-grid">
+        <div class="settings-block glass"><h3><i class="fa-solid fa-bell"></i> Alert Settings</h3>
+          <div class="tog-row"><span>Email Notifications</span><div class="tog active" onclick="this.classList.toggle('active')"><div class="tok"></div></div></div>
+          <div class="tog-row"><span>SMS Alerts</span><div class="tog active" onclick="this.classList.toggle('active')"><div class="tok"></div></div></div>
+          <div class="tog-row"><span>WhatsApp Alerts</span><div class="tog active" onclick="this.classList.toggle('active')"><div class="tok"></div></div></div>
+          <div class="tog-row"><span>Sound Alarm</span><div class="tog" onclick="this.classList.toggle('active')"><div class="tok"></div></div></div>
+        </div>
+        <div class="settings-block glass"><h3><i class="fa-solid fa-video"></i> Camera Settings</h3>
+          <div class="tog-row"><span>Auto-Record on Alert</span><div class="tog active" onclick="this.classList.toggle('active')"><div class="tok"></div></div></div>
+          <div class="tog-row"><span>Night Vision Mode</span><div class="tog" onclick="this.classList.toggle('active')"><div class="tok"></div></div></div>
+          <div class="tog-row"><span>Motion Detection</span><div class="tog active" onclick="this.classList.toggle('active')"><div class="tok"></div></div></div>
+          <div class="tog-row"><span>Face Recognition</span><div class="tog active" onclick="this.classList.toggle('active')"><div class="tok"></div></div></div>
+        </div>
+        <div class="settings-block glass"><h3><i class="fa-solid fa-microchip"></i> AI Engine</h3>
+          <div class="tog-row"><span>Threat Detection</span><div class="tog active" onclick="this.classList.toggle('active')"><div class="tok"></div></div></div>
+          <div class="tog-row"><span>Posture Analysis</span><div class="tog active" onclick="this.classList.toggle('active')"><div class="tok"></div></div></div>
+          <div class="tog-row"><span>Crowd Monitoring</span><div class="tog" onclick="this.classList.toggle('active')"><div class="tok"></div></div></div>
+          <div class="tog-row"><span>Edge Processing</span><div class="tog active" onclick="this.classList.toggle('active')"><div class="tok"></div></div></div>
+        </div>
+        <div class="settings-block glass"><h3><i class="fa-solid fa-shield-halved"></i> Security</h3>
+          <div class="tog-row"><span>Two-Factor Auth</span><div class="tog active" onclick="this.classList.toggle('active')"><div class="tok"></div></div></div>
+          <div class="tog-row"><span>Session Timeout</span><div class="tog active" onclick="this.classList.toggle('active')"><div class="tok"></div></div></div>
+          <div class="tog-row"><span>Audit Logging</span><div class="tog active" onclick="this.classList.toggle('active')"><div class="tok"></div></div></div>
+          <div class="tog-row"><span>Intrusion Lockdown</span><div class="tog" onclick="this.classList.toggle('active')"><div class="tok"></div></div></div>
+        </div>
+      </div>
+
+      <!-- BACKEND STATUS PANEL — from GET /api/status -->
+      <div class="glass" style="margin-top:16px;padding:20px;border-radius:12px">
+        <h3 style="font-family:'Rajdhani',sans-serif;font-size:.92rem;font-weight:700;letter-spacing:1px;margin-bottom:14px;display:flex;align-items:center;gap:8px">
+          <i class="fa-solid fa-server" style="color:var(--accent)"></i>BACKEND STATUS
+        </h3>
+        <div class="tog-row"><span>Flask Server</span><span id="be-flask" style="font-size:.78rem;font-family:'Share Tech Mono',monospace;color:var(--t2)">Checking...</span></div>
+        <div class="tog-row"><span>Database (SQLite)</span><span id="be-db" style="font-size:.78rem;font-family:'Share Tech Mono',monospace;color:var(--t2)">Checking...</span></div>
+        <div class="tog-row"><span>Camera Feed</span><span id="be-cam" style="font-size:.78rem;font-family:'Share Tech Mono',monospace;color:var(--t2)">Checking...</span></div>
+        <div class="tog-row"><span>Location Source</span><span id="be-loc" style="font-size:.78rem;font-family:'Share Tech Mono',monospace;color:var(--t2)">Checking...</span></div>
+        <div class="tog-row"><span>AI Model</span><span id="be-model" style="font-size:.78rem;font-family:'Share Tech Mono',monospace;color:var(--t2)">Checking...</span></div>
+        <div class="tog-row"><span>Cooldown Remaining</span><span id="be-cooldown" style="font-size:.78rem;font-family:'Share Tech Mono',monospace;color:var(--t2)">—</span></div>
+        <button class="btn-register" style="margin-top:14px" onclick="pollStatus()">
+          <i class="fa-solid fa-rotate-right"></i> Refresh Backend Status
+        </button>
+      </div>
+    </section>
+
+  </div><!-- /main-wrap -->
+</div><!-- /app -->
+
+<!-- ══════════════════════════════════════════════════════
+     EMERGENCY THREAT POPUP
+     Auto-triggered when pollStatus() sees risk_score >= threshold.
+     Also fires via Test Alert → POST /api/test_email.
+══════════════════════════════════════════════════════ -->
+<div class="threat-overlay" id="threat-overlay">
+  <div class="threat-modal" id="threat-modal">
+    <div class="tm-scanner"></div>
+    <div class="tm-hdr">
+      <div class="tm-title"><i class="fa-solid fa-triangle-exclamation"></i><span>THREAT DETECTED — ALERT SENT</span></div>
+      <div class="tm-time" id="tm-time"></div>
+    </div>
+    <div class="tm-body">
+      <div class="tm-row2">
+        <div class="tm-sec">
+          <div class="tm-sec-title"><i class="fa-solid fa-location-dot"></i> THREAT LOCATION</div>
+          <!-- All fields populated from /api/status + /api/alerts -->
+          <div class="tm-detail"><span>Location</span><strong id="td-loc">Room 1</strong></div>
+          <div class="tm-detail"><span>Camera ID</span><strong id="td-cam">CAM-01</strong></div>
+          <div class="tm-detail"><span>Risk Level</span><strong><span class="risk-badge" id="td-risk">CRITICAL</span></strong></div>
+          <div class="tm-detail"><span>Risk Score</span><strong id="td-score">—</strong></div>
+          <div class="tm-detail"><span>Timestamp</span><strong id="td-ts">—</strong></div>
+        </div>
+        <div class="tm-sec">
+          <div class="tm-sec-title"><i class="fa-solid fa-person"></i> AI DETECTION RESULT</div>
+          <div class="tm-person">
+            <div class="tm-person-img"><i class="fa-solid fa-person-running"></i></div>
+            <div class="tm-person-info">
+              <!-- From /api/status → last_message -->
+              <strong id="td-name">Distress Gesture</strong>
+              <p id="td-detail">MediaPipe Pose Detection</p>
+              <span class="risk-badge high-badge">⚠ HIGH RISK</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="tm-row2">
+        <div class="tm-sec">
+          <div class="tm-sec-title"><i class="fa-solid fa-paper-plane"></i> ALERTS SENT</div>
+          <div class="tm-channels">
+            <!-- email_sent status from /api/alerts latest record -->
+            <div class="tm-ch">
+              <i class="fa-solid fa-envelope"></i><span>Email (SMTP)</span>
+              <span id="td-email-status" class="ch-ok">
+                <i class="fa-solid fa-circle-notch fa-spin"></i> Sending...
+              </span>
+            </div>
+            <div class="tm-ch">
+              <i class="fa-solid fa-database"></i><span>SQLite Database</span>
+              <span class="ch-ok"><i class="fa-solid fa-circle-check"></i> Recorded</span>
+            </div>
+          </div>
+        </div>
+        <div class="tm-sec">
+          <div class="tm-sec-title"><i class="fa-solid fa-map-location-dot"></i> LOCATION LOGGED</div>
+          <div class="tm-rel">
+            <div class="rel-av"><i class="fa-solid fa-location-dot" style="font-size:.9rem"></i></div>
+            <div class="rel-info">
+              <strong>GPS Coordinates</strong>
+              <!-- From /api/alerts latest → latitude, longitude -->
+              <span id="td-coords">Retrieving location...</span>
+            </div>
+            <span class="rel-ok">✓ Logged</span>
+          </div>
+          <div class="tm-rel" style="margin-top:6px">
+            <div class="rel-av"><i class="fa-solid fa-map" style="font-size:.9rem"></i></div>
+            <div class="rel-info">
+              <strong>View on Map</strong>
+              <a id="td-map-link" href="#" target="_blank" style="font-size:.72rem;color:var(--accent)">Open in Google Maps</a>
+            </div>
+            <span class="rel-ok">↗</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="tm-footer">
+      <button class="tm-btn-resolve" onclick="resolveAlert()"><i class="fa-solid fa-circle-check"></i> Mark as Resolved</button>
+      <button class="tm-btn-keep" onclick="closeKeep()"><i class="fa-solid fa-xmark"></i> Keep Open</button>
+    </div>
+  </div>
+</div>
+
+<script src="/static/script.js"></script>
+</body>
+</html>
