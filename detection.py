@@ -6,12 +6,10 @@ from collections import deque
 import cv2
 import mediapipe as mp
 
-
 @dataclass
 class ThreatEvent:
     message: str
     risk_score: float
-
 
 class ThreatDetector:
     def __init__(self, threshold: float = 0.72, cooldown_seconds: int = 45):
@@ -20,47 +18,36 @@ class ThreatDetector:
         self.monitoring = False
         self.model_name = "MediaPipe Pose (Edge AI)"
 
-        # Smoothed risk score for stable UI/alerts
         self.risk_score = 0.0
         self.last_alert_time = 0.0
         self.last_message = "No alerts yet"
         self.total_alerts = 0
         self.camera_open = False
 
-        # Multi-frame stability (short window; alerts react quickly)
         self._distress_history = deque(maxlen=10)
         self._history_required_ratio = 0.25
 
-        # Risk smoothing
         self._risk_ema_alpha = 0.18
-
-        # Thresholds for geometry (MediaPipe returns normalized coords)
-        # Loosened so real-world gestures are picked up more easily.
-        self._arm_raise_margin = 0.0      # wrist above shoulder
-        self._head_raise_margin = 0.015   # wrist above head top
+        self._arm_raise_margin = 0.0      
+        self._head_raise_margin = 0.015  
         self._elbow_extended_deg = 130.0
 
-        # Lightweight motion detection (normalized coords)
         self._motion_threshold = 0.015
         self._prev_points = None
         self._motion_score = 0.0
-        # Global frame motion (helps catch close/fast movement even
-        # when the pose isn’t perfectly “hands-up”)
+        
         self._prev_gray = None
         self._global_motion_score = 0.0
-        self._global_motion_threshold = 0.35  # normalized 0..1
+        self._global_motion_threshold = 0.35  
 
-        # Keep risk elevated briefly after an alert (so UI feels responsive)
         self._alert_hold_seconds = 7
         self._alert_hold_until = 0.0
 
-        # ✅ Initialize MediaPipe Pose
         self.mp_pose = mp.solutions.pose
         self.pose = self.mp_pose.Pose()
         self.mp_draw = mp.solutions.drawing_utils
 
     def set_monitoring(self, value: bool):
-        # When stopping, clear risk so the dashboard doesn't show stale danger.
         if self.monitoring and not value:
             self.risk_score = 0.0
         self.monitoring = value
@@ -76,7 +63,6 @@ class ThreatDetector:
         return (float(p.x), float(p.y), float(p.z))
 
     def _angle_at_elbow(self, shoulder, elbow, wrist) -> float:
-        # angle between vectors (shoulder->elbow) and (wrist->elbow)
         sx, sy, _ = shoulder
         ex, ey, _ = elbow
         wx, wy, _ = wrist
@@ -141,7 +127,6 @@ class ThreatDetector:
             shoulder_y = (ls[1] + rs[1]) / 2.0
             head_top_y = min(nose[1], le[1], re[1], ear_l[1], ear_r[1])
 
-            # Arms raised relative to shoulders/head
             left_arm_raised = lw[1] < (ls[1] - self._arm_raise_margin)
             right_arm_raised = rw[1] < (rs[1] - self._arm_raise_margin)
             hands_high = (lw[1] < (head_top_y - self._head_raise_margin)) and (
@@ -149,14 +134,12 @@ class ThreatDetector:
             )
             one_arm_raised = left_arm_raised ^ right_arm_raised
 
-            # Elbow extension check (helps reduce accidental triggers)
             left_elbow_angle = self._angle_at_elbow(ls, lelb, lw)
             right_elbow_angle = self._angle_at_elbow(rs, relb, rw)
             left_extended = left_elbow_angle >= self._elbow_extended_deg
             right_extended = right_elbow_angle >= self._elbow_extended_deg
             both_extended = left_extended and right_extended
 
-            # Lightweight motion: fast movement while hands are up increases confidence.
             if self._prev_points is not None:
                 nose_move = self._point_distance_xy(nose, self._prev_points["nose"])
                 lw_move = self._point_distance_xy(lw, self._prev_points["lw"])
@@ -169,7 +152,6 @@ class ThreatDetector:
 
             self._prev_points = {"nose": nose, "lw": lw, "rw": rw}
 
-            # Risk scoring (instantaneous target_risk)
             if one_arm_raised:
                 target_risk = max(target_risk, 0.35)
             if left_arm_raised and right_arm_raised:
@@ -182,7 +164,6 @@ class ThreatDetector:
             if target_risk > 0 and panic_motion:
                 target_risk = min(1.0, target_risk + 0.12)
 
-            # Distress condition for alerting: sustained hands-high + either motion or extension.
             distress_condition = bool(
                 hands_high
                 or (panic_motion and (left_arm_raised or right_arm_raised))
@@ -197,43 +178,32 @@ class ThreatDetector:
                 "shoulder_y": round(shoulder_y, 4),
                 "head_top_y": round(head_top_y, 4),
             }
-
-            # ✅ Draw pose landmarks
             self.mp_draw.draw_landmarks(
                 frame,
                 results.pose_landmarks,
                 self.mp_pose.POSE_CONNECTIONS,
             )
-
-        # If there’s very strong whole-frame motion (someone rushing in
-        # close to the camera), treat that as at least medium risk even
-        # without a textbook “hands-up” pose.
         if self._global_motion_score >= self._global_motion_threshold and target_risk < 0.6:
             target_risk = max(target_risk, 0.6)
             distress_condition = True
 
-        # Update smoothed risk
         if distress_condition or target_risk > 0:
             self.risk_score = (1.0 - self._risk_ema_alpha) * self.risk_score + self._risk_ema_alpha * target_risk
         else:
-            # Decay faster when no distress evidence
             self.risk_score = max(0.0, self.risk_score * 0.82)
 
         self.risk_score = max(0.0, min(1.0, self.risk_score))
 
-        # Maintain multi-frame consensus
         self._distress_history.append(distress_condition)
         if self._distress_history:
             distress_ratio = sum(self._distress_history) / len(self._distress_history)
         else:
             distress_ratio = 0.0
 
-        # Small “risk hold” window right after an alert
         now = time.time()
         if now < self._alert_hold_until:
             self.risk_score = max(self.risk_score, 0.72)
 
-        # 🚨 Trigger alert
         if (
             self.risk_score >= self.threshold
             and distress_ratio >= self._history_required_ratio
@@ -256,8 +226,6 @@ class ThreatDetector:
                 "message": self.last_message,
                 "risk_score": round(self.risk_score, 3),
             }
-
-            # Pin risk high on trigger so UI clearly reflects danger.
             self.risk_score = 1.0
 
         self._annotate(frame)
@@ -269,7 +237,6 @@ class ThreatDetector:
         cooldown_left = max(
             0, int(self.cooldown_seconds - (time.time() - self.last_alert_time))
         )
-
         cv2.putText(frame, f"AI: {self.model_name}", (10, 25),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
 
