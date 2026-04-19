@@ -5,10 +5,8 @@ from email.mime.text import MIMEText
 
 from dotenv import load_dotenv
 
-# Always load .env from this project folder (not from the current working dir).
 dotenv_path = Path(__file__).resolve().parent / ".env"
 load_dotenv(dotenv_path=dotenv_path, override=False)
-
 
 def send_alert_email_detailed(message: str, latitude: float, longitude: float) -> tuple[bool, str | None]:
     sender_email = os.getenv("ALERT_SENDER_EMAIL", "")
@@ -25,13 +23,11 @@ def send_alert_email_detailed(message: str, latitude: float, longitude: float) -
         f"Location:\nLatitude: {latitude}\nLongitude: {longitude}\n\n"
         f"Map: {location_link}"
     )
-
-    # Ensure any non-ASCII symbols in `message` don't break encoding.
     msg = MIMEText(body, "plain", "utf-8")
     msg["Subject"] = "Threat Detected - Edge AI Safety System"
     msg["From"] = sender_email
     msg["To"] = receiver_email
-
+    
     try:
         with smtplib.SMTP("smtp.gmail.com", 587, timeout=15) as server:
             server.starttls()
@@ -42,8 +38,7 @@ def send_alert_email_detailed(message: str, latitude: float, longitude: float) -
     except Exception as exc:
         print(f"Email alert failed: {exc}", flush=True)
         return False, str(exc)
-
-
+        
 def send_alert_email(message: str, latitude: float, longitude: float) -> bool:
     ok, _err = send_alert_email_detailed(message=message, latitude=latitude, longitude=longitude)
     return ok
