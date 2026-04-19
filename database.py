@@ -9,12 +9,10 @@ def get_db_connection():
     conn.execute("PRAGMA busy_timeout = 30000")
     return conn
 
-
 def init_db():
     conn = get_db_connection()
     conn.execute("PRAGMA journal_mode = WAL")
 
-    # ── alerts table ──────────────────────────────────────────────────────────
     conn.execute("""
         CREATE TABLE IF NOT EXISTS alerts (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -28,7 +26,6 @@ def init_db():
     )
 """)
 
-    # Back-fill optional columns added after initial schema
     cols = {row["name"] for row in conn.execute("PRAGMA table_info(alerts)").fetchall()}
     if "email_sent" not in cols:
         conn.execute("ALTER TABLE alerts ADD COLUMN email_sent INTEGER DEFAULT 0")
@@ -74,10 +71,8 @@ def set_email_status(alert_id: int, email_sent: bool, email_error: str | None = 
     conn.commit()
     conn.close()
 
-
 def get_alerts(limit: int = 20):
     return get_alerts_filtered(limit=limit, hours=24)
-
 
 def get_alerts_filtered(limit: int = 20, hours: int = 24):
     """Return recent alerts only, newest first."""
@@ -128,7 +123,6 @@ def get_or_create_google_user(
             conn.commit()
             return dict(row)
 
-        # ── New user ──────────────────────────────────────────────────────────
         cur = conn.execute(
             "INSERT INTO users (google_id, email, name, picture) VALUES (?, ?, ?, ?)",
             (google_id, email, name, picture),
@@ -143,7 +137,6 @@ def get_or_create_google_user(
         }
     finally:
         conn.close()
-
 
 def get_user_by_id(user_id: int) -> dict | None:
     """Return a user row by primary key, or None if not found."""
