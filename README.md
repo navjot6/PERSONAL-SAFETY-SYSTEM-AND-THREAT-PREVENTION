@@ -69,25 +69,11 @@ python app.py
 - `templates/index.html` - single dashboard page
 - 'static/style.css' and 'static/script.js'
 
-## How It Works?
+## Requirements
 
-Webcam Frame
-     ↓
-MediaPipe Pose Estimation
-     ↓
-Gesture Analysis (hands-up, panic motion, elbow extension)
-     ↓
-Risk Score Calculation (EMA smoothed, 0.0 → 1.0)
-     ↓
-Multi-frame Consensus Check
-     ↓
-Threshold Crossed? (default: 0.5)
-     ↓
-┌─────────────────────────────────┐
-│  Save Evidence Snapshot (.jpg)  │
-│  Store Alert in SQLite DB       │
-│  Send Email Notification        │
-└─────────────────────────────────┘
+- Python 3.8+
+- Webcam / USB camera
+- Gmail account with App Password enabled (for email alerts)
 
 ## Notes
 
