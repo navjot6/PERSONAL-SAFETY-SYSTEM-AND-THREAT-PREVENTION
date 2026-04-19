@@ -26,24 +26,18 @@ from database import (
 )
 from detection import ThreatDetector
 
-# ── Suppress TF / absl noise ──────────────────────────────────────────────────
 os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
 os.environ.setdefault("ABSL_MIN_LOG_LEVEL", "2")
 os.environ.setdefault("GLOG_minloglevel", "2")
 
-# ── Load environment from project .env ────────────────────────────────────────
 dotenv_path = Path(__file__).resolve().parent / ".env"
 load_dotenv(dotenv_path=dotenv_path, override=False)
 
-# ── Flask app ─────────────────────────────────────────────────────────────────
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY") or os.getenv("SECRET_KEY") or "change-me-use-a-long-random-string"
 
-# ── Google OAuth client ID ────────────────────────────────────────────────────
-# Set GOOGLE_CLIENT_ID in your .env file (same file as ALERT_SENDER_EMAIL etc.)
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
 
-# ── Detector & camera globals ─────────────────────────────────────────────────
 detector        = ThreatDetector(threshold=0.5, cooldown_seconds=25)
 camera_lock     = threading.Lock()
 camera          = None
@@ -55,11 +49,6 @@ location_lock   = threading.Lock()
 latest_client_location = None
 _runtime_started = False
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Auth helpers
-# ─────────────────────────────────────────────────────────────────────────────
-
 def login_required(f):
     """Redirect unauthenticated users to /login."""
     @wraps(f)
@@ -68,7 +57,6 @@ def login_required(f):
             return redirect(url_for("login_page"))
         return f(*args, **kwargs)
     return decorated
-
 
 def _parse_int_arg(name: str, default: int, min_value: int, max_value: int):
     raw = request.args.get(name, str(default))
@@ -80,7 +68,6 @@ def _parse_int_arg(name: str, default: int, min_value: int, max_value: int):
         return None, f"Invalid '{name}': must be between {min_value} and {max_value}"
     return value, None
 
-
 def _parse_float_arg(name: str, default: float, min_value: float, max_value: float):
     raw = request.args.get(name, str(default))
     try:
@@ -91,13 +78,11 @@ def _parse_float_arg(name: str, default: float, min_value: float, max_value: flo
         return None, f"Invalid '{name}': must be between {min_value} and {max_value}"
     return value, None
 
-
 def _safe_float(value, field_name: str):
     try:
         return float(value), None
     except (TypeError, ValueError):
         return None, f"Invalid '{field_name}': expected number"
-
 
 def _ensure_auth_users_table():
     conn = get_db_connection()
@@ -118,7 +103,6 @@ def _ensure_auth_users_table():
     conn.commit()
     conn.close()
 
-
 def _operator_id_from_email(email: str) -> str:
     return (email.split("@")[0] if "@" in email else email).strip().lower()
 
@@ -128,13 +112,11 @@ def _open_camera():
         camera = cv2.VideoCapture(0)
     return camera is not None and camera.isOpened()
 
-
 def _close_camera():
     global camera
     if camera is not None:
         camera.release()
         camera = None
-
 
 def _record_alert(message: str, latitude: float, longitude: float, snapshot: str = None):
     alert_id = add_alert(message=message, latitude=latitude, longitude=longitude, snapshot=snapshot)
@@ -155,14 +137,12 @@ def _generate_location():
         round(base_lon + random.uniform(-jitter, jitter), 6),
     )
 
-
 def _get_live_or_fallback_center():
     with location_lock:
         current = latest_client_location
     if current and (time.time() - current["updated_at"] <= 180):
         return float(current["latitude"]), float(current["longitude"]), True
     return 31.1471, 75.3412, False
-
 
 def _haversine_km(lat1, lon1, lat2, lon2) -> float:
     r = 6371.0
@@ -172,7 +152,6 @@ def _haversine_km(lat1, lon1, lat2, lon2) -> float:
     a = (math.sin(dphi / 2) ** 2
          + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2)
     return 2 * r * math.asin(math.sqrt(a))
-
 
 def _filter_points_by_radius(points, center_lat, center_lon, radius_km):
     filtered = []
@@ -185,7 +164,6 @@ def _filter_points_by_radius(points, center_lat, center_lon, radius_km):
         if km <= radius_km:
             filtered.append(p)
     return filtered
-
 
 def _capture_loop():
     global latest_jpeg, camera_open
@@ -242,7 +220,6 @@ def _capture_loop():
         with latest_jpeg_lock:
             latest_jpeg = buffer.tobytes()
 
-
 def _stream_frames():
     while True:
         with latest_jpeg_lock:
@@ -253,17 +230,11 @@ def _stream_frames():
         yield (b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + jpeg + b"\r\n")
         time.sleep(0.05)
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Auth routes
-# ─────────────────────────────────────────────────────────────────────────────
-
 @app.route("/login")
 def login_page():
     if "user" in session:
         return redirect(url_for("index"))
     return render_template("login.html", google_client_id=GOOGLE_CLIENT_ID)
-
 
 @app.route("/login", methods=["POST"])
 def login_submit():
@@ -305,18 +276,15 @@ def login_submit():
     }
     return redirect(url_for("index"))
 
-
 @app.route("/signup")
 def signup_page():
     return redirect(url_for("register_page"))
-
 
 @app.route("/register")
 def register_page():
     if "user" in session:
         return redirect(url_for("index"))
     return render_template("register.html")
-
 
 @app.route("/register", methods=["POST"])
 def register_submit():
@@ -367,7 +335,6 @@ def register_submit():
 
     return redirect(url_for("login_page"))
 
-
 @app.route("/auth/google", methods=["POST"])
 def google_auth():
     """
@@ -378,13 +345,11 @@ def google_auth():
     if not GOOGLE_CLIENT_ID:
         return jsonify({"ok": False,
                         "error": "GOOGLE_CLIENT_ID not configured in .env"}), 500
-
     payload = request.get_json(silent=True) or {}
     token   = payload.get("token", "")
 
     if not token:
         return jsonify({"ok": False, "error": "No credential token received"}), 400
-
     try:
         idinfo = id_token.verify_oauth2_token(
             token, grequests.Request(), GOOGLE_CLIENT_ID
@@ -440,12 +405,10 @@ def google_auth():
 
     return jsonify({"ok": True, "user": session["user"], "redirect": url_for("index")})
 
-
 @app.route("/logout")
 def logout():
     session.clear()
     return redirect(url_for("login_page"))
-
 
 @app.route("/api/me")
 @login_required
@@ -461,13 +424,11 @@ def index():
         google_client_id=GOOGLE_CLIENT_ID,
     )
 
-
 @app.route("/video_feed")
 @login_required
 def video_feed():
     return Response(_stream_frames(),
                     mimetype="multipart/x-mixed-replace; boundary=frame")
-
 
 @app.route("/api/monitor/start", methods=["POST"])
 @login_required
@@ -475,13 +436,11 @@ def start_monitoring():
     detector.set_monitoring(True)
     return jsonify({"ok": True, "monitoring": True})
 
-
 @app.route("/api/monitor/stop", methods=["POST"])
 @login_required
 def stop_monitoring():
     detector.set_monitoring(False)
     return jsonify({"ok": True, "monitoring": False})
-
 
 @app.route("/api/status")
 @login_required
@@ -508,7 +467,6 @@ def status():
 
     return jsonify(data)
 
-
 @app.route("/api/alerts")
 @login_required
 def alerts():
@@ -529,20 +487,17 @@ def alerts():
     points = _filter_points_by_radius(points, center_lat, center_lon, radius_km)
     return jsonify(points)
 
-
 @app.route("/api/location", methods=["POST"])
 @login_required
 def update_location():
     payload   = request.get_json(silent=True) or {}
     latitude  = payload.get("latitude")
     longitude = payload.get("longitude")
-
     try:
         latitude  = float(latitude)
         longitude = float(longitude)
     except (TypeError, ValueError):
         return jsonify({"ok": False, "error": "Invalid latitude/longitude"}), 400
-
     if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
         return jsonify({"ok": False, "error": "Out-of-range latitude/longitude"}), 400
 
@@ -554,7 +509,6 @@ def update_location():
             "updated_at": time.time(),
         }
     return jsonify({"ok": True, "location_status": "live"})
-
 
 @app.route("/api/map")
 @login_required
@@ -580,7 +534,6 @@ def map_view():
             icon=folium.Icon(color="red", icon="warning-sign"),
         ).add_to(fmap)
     return fmap.get_root().render()
-
 
 @app.route("/api/test_email", methods=["POST"])
 @login_required
@@ -612,7 +565,6 @@ def test_email():
         set_email_status(alert_id=alert_id, email_sent=ok, email_error=err)
 
     return jsonify({"ok": bool(ok), "message": message, "alert_id": alert_id})
-
 
 def _start_runtime():
     global _runtime_started, capture_thread
